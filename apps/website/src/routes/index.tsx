@@ -30,8 +30,10 @@ function HomePage() {
         // Build a 3x2 wall coordinate system.
         // These coordinates map directly to `/screen?c=<col>&r=<row>`.
         return Array.from({ length: 6 }, (_, index) => {
-            const c = index % 3;
-            const r = Math.floor(index / 3);
+            // The real wall is 16x4; the simulator shows the central 3x2 block (columns 6-8,
+            // rows 1-2), where inner London sits. Use /screen?preview=1 to see the whole wall.
+            const c = 6 + (index % 3);
+            const r = 1 + Math.floor(index / 3);
             return { c, r, id: `${r}-${c}` };
         });
     }, []);

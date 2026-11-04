@@ -22,12 +22,15 @@ import type { RushScene, ScreenMapViewState } from '../lib/realtime/types';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Wall geometry used by the simulator (`/`). Change these to match the real DO wall.
-const WALL_COLS = 3;
-const WALL_ROWS = 2;
+// Data Observatory: 16 columns x 4 rows of 1920x1080 screens (30720 x 4320 px).
+const WALL_COLS = 16;
+const WALL_ROWS = 4;
 const SCREEN_WIDTH = 1920;
 const SCREEN_HEIGHT = 1080;
 // The headline (clock + caption) lives on one tile so it is not repeated across the wall.
-const HEADLINE_TILE = { c: 0, r: 0 };
+// Inner London only spans the middle ~5 columns at this zoom, so the headline sits
+// on the left of the map rather than in the far corner of the wall.
+const HEADLINE_TILE = { c: 4, r: 1 };
 
 // Shared timings so transitions feel identical across all screen nodes.
 // Data changes ease over ~1s: slow enough to be calm, fast enough to follow playback.
@@ -85,6 +88,7 @@ function ScreenPage() {
     const [animatedBaseMapView, setAnimatedBaseMapView] = useState(mapView);
     const animationFrameRef = useRef<number | null>(null);
     const [windowWidth, setWindowWidth] = useState(SCREEN_WIDTH);
+    const [windowHeight, setWindowHeight] = useState(SCREEN_HEIGHT);
     const [previewView, setPreviewView] = useState<ScreenMapViewState | null>(null);
     const [mapInstance, setMapInstance] = useState<ReturnType<MapRef['getMap']> | null>(null);
 
@@ -99,7 +103,10 @@ function ScreenPage() {
         // One DeckGL canvas is fine in its own tab; inside wall iframes we use the lighter
         // MapLibre-only path to avoid exhausting WebGL contexts.
         setUseDeckWrapper(window.self === window.top);
-        const onResize = () => setWindowWidth(window.innerWidth);
+        const onResize = () => {
+            setWindowWidth(window.innerWidth);
+            setWindowHeight(window.innerHeight);
+        };
         onResize();
         window.addEventListener('resize', onResize);
         void loadRushData().then((data) => {
@@ -179,7 +186,10 @@ function ScreenPage() {
     );
 
     // --- DeckGL path (top-level tab) ---------------------------------------------------------
-    const markScale = isPreview ? 1 / WALL_COLS : 1;
+    // Preview shrinks the whole 30720px-wide wall into this window: scale marks and text to match.
+    const previewScale = windowWidth / (SCREEN_WIDTH * WALL_COLS);
+    const markScale = isPreview ? previewScale : 1;
+    const textScale = isPreview ? previewScale : null;
     const labelsVisible = localScreenMapView.zoom >= (isPreview ? 10 : 11);
     const layers = useMemo(() => {
         const transitions = { getColor: DATA_TRANSITION_MS, getWidth: DATA_TRANSITION_MS };
@@ -360,24 +370,28 @@ function ScreenPage() {
 
             {isHeadlineTile ? (
                 // Wall-scale typography: the clock is the primary text (>= 20% of screen height).
-                <div className="pointer-events-none absolute top-[4vh] left-[3vw] z-10 flex max-w-[60vw] flex-col gap-[1.5vh] drop-shadow-[0_0.4vh_1.2vh_rgba(0,0,0,0.9)]">
+                <div
+                    className="pointer-events-none absolute top-[4vh] left-[3vw] z-10 flex max-w-[60vw] flex-col gap-[1.5vh] drop-shadow-[0_0.4vh_1.2vh_rgba(0,0,0,0.9)]"
+                    // In preview, place the headline where its tile sits inside the wall outline.
+                    style={isPreview ? previewHeadlineStyle(windowHeight, previewScale) : undefined}
+                >
                     <p
                         className="tracking-[0.3em] text-zinc-400 uppercase"
-                        style={vh(4, isPreview)}
+                        style={vh(4, textScale)}
                     >
                         {headline.kicker}
                     </p>
                     <p
                         className="leading-none font-semibold tabular-nums"
-                        style={vh(22, isPreview)}
+                        style={vh(22, textScale)}
                     >
                         {sliceLabel(rush, slice)}
                     </p>
-                    <p className="leading-tight font-medium" style={vh(6, isPreview)}>
+                    <p className="leading-tight font-medium" style={vh(6, textScale)}>
                         {headline.title}
                     </p>
                     {headline.stat ? (
-                        <p className="text-zinc-300" style={vh(5, isPreview)}>
+                        <p className="text-zinc-300" style={vh(5, textScale)}>
                             {headline.stat}
                         </p>
                     ) : null}
@@ -389,10 +403,13 @@ function ScreenPage() {
                 </div>
             ) : null}
 
-            <p className="absolute right-[1.5vw] bottom-[1.5vh] z-10 text-[1.8vh] text-zinc-500">
-                Data: TfL NUMBAT 2025 (typical Tue–Thu) · TfL walking times · © CARTO, ©
-                OpenStreetMap
-            </p>
+            {isPreview || (screenC === WALL_COLS - 1 && screenR === WALL_ROWS - 1) ? (
+                // Attribution once, bottom-right of the wall.
+                <p className="absolute right-[1.5vw] bottom-[1.5vh] z-10 text-[1.8vh] text-zinc-500">
+                    Data: TfL NUMBAT 2025 (typical Tue–Thu) · TfL walking times · © CARTO, ©
+                    OpenStreetMap
+                </p>
+            ) : null}
         </main>
     );
 }
@@ -486,9 +503,22 @@ function buildHeadline(
     };
 }
 
-function vh(size: number, isPreview: boolean) {
-    // Preview shows WALL_COLS tiles across one window, so wall text is scaled by 1/WALL_COLS.
-    return { fontSize: `${isPreview ? size / WALL_COLS : size}vh` };
+function previewHeadlineStyle(windowHeight: number, scale: number) {
+    const wallHeight = SCREEN_HEIGHT * WALL_ROWS * scale;
+    const wallTop = (windowHeight - wallHeight) / 2;
+    return {
+        left: `${(HEADLINE_TILE.c + 0.03) * SCREEN_WIDTH * scale}px`,
+        top: `${wallTop + (HEADLINE_TILE.r + 0.04) * SCREEN_HEIGHT * scale}px`,
+        maxWidth: `${0.9 * SCREEN_WIDTH * scale}px`,
+        gap: `${0.015 * SCREEN_HEIGHT * scale}px`
+    };
+}
+
+function vh(size: number, previewScale: number | null) {
+    // On the wall, sizes are % of one screen's height. In preview, convert to the pixel size
+    // that text would have on the wall, scaled down to this window.
+    if (previewScale === null) return { fontSize: `${size}vh` };
+    return { fontSize: `${(size / 100) * SCREEN_HEIGHT * previewScale}px` };
 }
 
 function pairKey(link: RushLink) {

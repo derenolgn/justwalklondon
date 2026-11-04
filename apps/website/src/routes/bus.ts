@@ -16,7 +16,7 @@ import { DEFAULT_RUSH_SLICE, isRushScene, sanitizeSlice } from '../lib/realtime/
 // join late without waiting for another control interaction.
 const busSharedState: BusSharedState = {
     city: 'london',
-    zoom: 12,
+    zoom: 13,
     selectedSegmentIndexes: [],
     slice: DEFAULT_RUSH_SLICE,
     scene: 'heartbeat'

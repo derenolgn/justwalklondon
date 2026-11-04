@@ -125,8 +125,8 @@ export type ScreenStoreState = EngineStoreState & {
 
 export const createInitialControlStoreState = (): ControlStoreState => ({
     ...createInitialEngineStoreState('control'),
-    // 50 maps to zoom 12 (Zones 1-2 fill the wall).
-    sliderValue: 50,
+    // 58 maps to zoom ~13: Zones 1-3 fill the wall's height (4 screens).
+    sliderValue: 58,
     isSliderInteracting: false,
     selectedCity: 'london',
     selectedSegmentIndexes: [],
@@ -140,7 +140,7 @@ export const createInitialScreenStoreState = (): ScreenStoreState => ({
     mapView: {
         longitude: -0.115,
         latitude: 51.51,
-        zoom: 12,
+        zoom: 13,
         bearing: 0,
         pitch: 0
     },

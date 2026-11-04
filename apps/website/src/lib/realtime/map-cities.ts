@@ -7,7 +7,7 @@ export const CITY_MAP_VIEWS: Record<MapCity, ScreenMapViewState> = {
         // Centred on Zones 1-2 so the walkable central hops fill the wall.
         longitude: -0.115,
         latitude: 51.51,
-        zoom: 12,
+        zoom: 13,
         bearing: 0,
         pitch: 0
     },
