@@ -9,9 +9,12 @@ import type {
     ControlStoreState,
     HelloBusMessage,
     MapCity,
+    RushScene,
     ScreenMapViewMessage,
+    ScreenRushMessage,
     ScreenSegmentSelectionMessage
 } from '../types';
+import { isRushScene, RUSH_SLICE_COUNT, sanitizeSlice } from '../types';
 import { BusEngine } from './bus-engine';
 
 const SLIDER_BROADCAST_WAIT_MS = 100;
@@ -20,6 +23,10 @@ const SLIDER_MAX = 100;
 const MAP_ZOOM_MIN = 6;
 const MAP_ZOOM_MAX = 18;
 const DEFAULT_SHUFFLE_SELECTION_COUNT = 24;
+// Autoplay pace: one quarter hour per tick. Slow on purpose (viewer comfort on the wall).
+const PLAY_TICK_MS = 1500;
+// Autoplay covers the service day 05:00 -> 00:30 and loops (night slices are near-empty).
+const PLAY_LAST_SLICE = 78;
 
 export class ControlEngine extends BusEngine<ControlStoreState> {
     // Cached once loaded to avoid repeated dataset fetches from the control route.
@@ -58,8 +65,49 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
         }
     );
 
+    private playTimer: ReturnType<typeof setInterval> | null = null;
+
+    private readonly broadcastSliceThrottled = throttle(
+        (slice: number) => {
+            this.send({
+                type: 'screen/rush',
+                slice,
+                peerId: this.getPeerId() ?? undefined
+            });
+        },
+        { wait: SLIDER_BROADCAST_WAIT_MS, leading: true, trailing: true }
+    );
+
     private constructor() {
         super('control', controlStore);
+    }
+
+    setSlice(value: number) {
+        const slice = sanitizeSlice(value);
+        if (slice === null) return;
+        this.store.setState((prev) => (prev.slice === slice ? prev : { ...prev, slice }));
+        this.broadcastSliceThrottled(slice);
+    }
+
+    setScene(scene: RushScene) {
+        this.store.setState((prev) => (prev.scene === scene ? prev : { ...prev, scene }));
+        this.send({ type: 'screen/rush', scene, peerId: this.getPeerId() ?? undefined });
+    }
+
+    togglePlay() {
+        if (typeof window === 'undefined') return;
+        if (this.playTimer !== null) {
+            clearInterval(this.playTimer);
+            this.playTimer = null;
+            this.store.setState((prev) => ({ ...prev, isPlaying: false }));
+            return;
+        }
+        this.store.setState((prev) => ({ ...prev, isPlaying: true }));
+        this.playTimer = setInterval(() => {
+            const current = this.store.state.slice;
+            const next = current >= PLAY_LAST_SLICE ? 0 : (current + 1) % RUSH_SLICE_COUNT;
+            this.setSlice(next);
+        }, PLAY_TICK_MS);
     }
 
     static getInstance() {
@@ -191,6 +239,20 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
             return;
         }
 
+        if (message.type === 'screen/rush') {
+            // Mirror other operators' time/scene changes; ignore while dragging locally.
+            const rush = message as ScreenRushMessage;
+            const slice = sanitizeSlice(rush.slice);
+            const scene = isRushScene(rush.scene) ? rush.scene : null;
+            this.store.setState((prev) => {
+                const nextSlice = slice !== null && !prev.isSliderInteracting ? slice : prev.slice;
+                const nextScene = scene ?? prev.scene;
+                if (nextSlice === prev.slice && nextScene === prev.scene) return prev;
+                return { ...prev, slice: nextSlice, scene: nextScene };
+            });
+            return;
+        }
+
         if (message.type === 'screen/segment-selection') {
             const segmentSelectionMessage = message as ScreenSegmentSelectionMessage;
             if (!Array.isArray(segmentSelectionMessage.indexes)) return;
@@ -237,6 +299,13 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
                 selectedSegmentIndexes: nextSelectedIndexes
             };
         });
+        const slice = sanitizeSlice(state.slice);
+        const scene = isRushScene(state.scene) ? state.scene : null;
+        this.store.setState((prev) => ({
+            ...prev,
+            slice: slice ?? prev.slice,
+            scene: scene ?? prev.scene
+        }));
     }
 
     private clampSliderValue(value: number) {

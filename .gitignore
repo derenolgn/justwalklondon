@@ -25,4 +25,7 @@ dist-ssr
 
 # Dependency directories and files
 node_modules
-.vite*/
+.vite*/.env
+data-raw/
+
+.env

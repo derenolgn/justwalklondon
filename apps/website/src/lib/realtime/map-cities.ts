@@ -4,9 +4,10 @@ import type { MapCity, ScreenMapViewState } from './types';
 // Keeping this centralized ensures city selection behaves identically across all clients.
 export const CITY_MAP_VIEWS: Record<MapCity, ScreenMapViewState> = {
     london: {
-        longitude: -0.1749,
-        latitude: 51.4988,
-        zoom: 9,
+        // Centred on Zones 1-2 so the walkable central hops fill the wall.
+        longitude: -0.115,
+        latitude: 51.51,
+        zoom: 12,
         bearing: 0,
         pitch: 0
     },

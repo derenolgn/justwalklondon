@@ -7,9 +7,11 @@ import type {
     HelloBusMessage,
     ScreenMapViewMessage,
     ScreenMapViewState,
+    ScreenRushMessage,
     ScreenSegmentSelectionMessage,
     ScreenStoreState
 } from '../types';
+import { isRushScene, sanitizeSlice } from '../types';
 import { BusEngine } from './bus-engine';
 
 export class ScreenEngine extends BusEngine<ScreenStoreState> {
@@ -87,7 +89,24 @@ export class ScreenEngine extends BusEngine<ScreenStoreState> {
         if (message.type === 'screen/segment-selection') {
             const segmentSelectionMessage = message as ScreenSegmentSelectionMessage;
             this.applySegmentSelection(segmentSelectionMessage.indexes);
+            return;
         }
+
+        if (message.type === 'screen/rush') {
+            this.applyRush(message as ScreenRushMessage);
+        }
+    }
+
+    private applyRush(message: Partial<ScreenRushMessage>) {
+        // Validate untrusted slice/scene before touching shared render state.
+        const slice = sanitizeSlice(message.slice);
+        const scene = isRushScene(message.scene) ? message.scene : null;
+        this.store.setState((prev) => {
+            const nextSlice = slice ?? prev.slice;
+            const nextScene = scene ?? prev.scene;
+            if (nextSlice === prev.slice && nextScene === prev.scene) return prev;
+            return { ...prev, slice: nextSlice, scene: nextScene };
+        });
     }
 
     protected override onHello(hello: HelloBusMessage) {
@@ -100,6 +119,7 @@ export class ScreenEngine extends BusEngine<ScreenStoreState> {
             view: { zoom: hello.state.zoom }
         });
         this.applySegmentSelection(hello.state.selectedSegmentIndexes);
+        this.applyRush({ slice: hello.state.slice, scene: hello.state.scene });
     }
 
     private applyMapViewMessage(mapViewMessage: ScreenMapViewMessage) {

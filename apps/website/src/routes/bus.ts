@@ -5,17 +5,21 @@ import type {
     BusMessage,
     BusSharedState,
     ScreenMapViewMessage,
+    ScreenRushMessage,
     ScreenSegmentSelectionMessage
 } from '../lib/realtime';
 import { isMapCity } from '../lib/realtime/map-cities';
+import { DEFAULT_RUSH_SLICE, isRushScene, sanitizeSlice } from '../lib/realtime/types';
 
 // In-memory bus state for this server process.
 // New clients receive this snapshot in the `hello` handshake so they can
 // join late without waiting for another control interaction.
 const busSharedState: BusSharedState = {
     city: 'london',
-    zoom: 9,
-    selectedSegmentIndexes: []
+    zoom: 12,
+    selectedSegmentIndexes: [],
+    slice: DEFAULT_RUSH_SLICE,
+    scene: 'heartbeat'
 };
 
 const hooks = defineHooks({
@@ -67,6 +71,15 @@ const hooks = defineHooks({
 });
 
 function updateBusSharedState(payload: Partial<BusMessage>) {
+    if (payload.type === 'screen/rush') {
+        // Remember time-of-day + scene so late-joining screens open on the same moment.
+        const message = payload as Partial<ScreenRushMessage>;
+        const slice = sanitizeSlice(message.slice);
+        if (slice !== null) busSharedState.slice = slice;
+        if (isRushScene(message.scene)) busSharedState.scene = message.scene;
+        return;
+    }
+
     if (payload.type === 'screen/map-view') {
         const message = payload as Partial<ScreenMapViewMessage>;
         // Preserve last known valid city/zoom for hello-state replay.
