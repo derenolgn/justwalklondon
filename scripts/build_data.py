@@ -1,10 +1,9 @@
 """
-Build the dataset for "London's Rush Hour: Quicker to Walk".
+Build the dataset for "Just Walk, London".
 
 Inputs (put in ./data-raw/):
   NBT25TWT_Outputs.xlsx                                   NUMBAT 2025, typical Tue-Thu
   LU_DLR_LO_NR_Zones_1-3_-_approximate_walk_times.xlsx    TfL adjacent-station walk times
-  Central_London_journeys_that_be_quicker_to_walk_TOP_10_FINAL_DATA.xlsx
 
 Output:
   apps/website/public/data/rush.json
@@ -23,7 +22,6 @@ RAW = ROOT / "data-raw"
 OUT = ROOT / "apps/website/public/data/rush.json"
 NUMBAT = RAW / "NBT25TWT_Outputs.xlsx"
 WALK = RAW / "LU_DLR_LO_NR_Zones_1-3_-_approximate_walk_times.xlsx"
-TOP10 = RAW / "Central_London_journeys_that_be_quicker_to_walk_TOP_10_FINAL_DATA.xlsx"
 CACHE = RAW / "stoppoints.json"
 MODES = "tube,dlr,overground,elizabeth-line"
 
@@ -120,17 +118,10 @@ def main():
             "load": [int(round(r[c])) for c in Q],
         })
 
-    # Finale: non-adjacent journeys quicker to walk
-    top = pd.read_excel(TOP10).dropna(subset=["Walking time"])
-    top = top[pd.to_numeric(top["Walking time"], errors="coerce").notna()]
-    finale = [{"from": norm(r["From"]), "to": norm(r["To"]),
-               "fromName": r["From"], "toName": r["To"], "walk": int(r["Walking time"])}
-              for _, r in top.iterrows()]
-
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
         "source": "TfL NUMBAT 2025 (typical Tue-Thu), TfL walking times Zones 1-3",
-        "slices": Q, "stations": stations, "links": out_links, "finale": finale,
+        "slices": Q, "stations": stations, "links": out_links,
     }, separators=(",", ":")))
 
     walkable = [l for l in out_links if l["walk"] and l["walk"] <= 10]

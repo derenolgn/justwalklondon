@@ -1,4 +1,5 @@
 import {
+    ESCAPE_HIGHLIGHT_COUNT,
     sliceLabel,
     walkableHighlights,
     walkablePassengers,
@@ -27,8 +28,20 @@ const LEFT_X = TILE_W * 1 + 160;
 const LEFT_W = TILE_W * 4.5;
 const RIGHT_X = TILE_W * 11 + 160;
 const RIGHT_W = TILE_W * 4.6;
-const RANK_COUNT = 9; // 3 per screen row x 3 rows
-const ITEM_H = TILE_H / 3;
+// Ranking uses screen rows 2-4, two items per row so each line can be primary-size text.
+const RANK_PER_ROW = 2;
+const RANK_COUNT = ESCAPE_HIGHLIGHT_COUNT; // 2 per screen row x 3 rows; matches the map labels
+const ITEM_H = TILE_H / RANK_PER_ROW;
+
+// Type scale, derived from screen height so it follows the DO's legibility rule:
+// primary wall text must be at least 20% of one screen's height (~10 m viewing distance).
+// Secondary text (explanations, units) supports the primary line and stays smaller on purpose.
+export const TYPE = {
+    display: Math.round(TILE_H * 0.83), // the clock
+    primary: Math.round(TILE_H * 0.21), // 227 px: headings, stats, ranking rows
+    secondary: Math.round(TILE_H * 0.13), // 140 px: notes, details, map labels
+    caption: Math.round(TILE_H * 0.08) // 86 px: data attribution only
+} as const;
 
 const ACCENT: Record<RushScene, string> = {
     heartbeat: 'rgb(255,176,59)',
@@ -44,7 +57,9 @@ type Props = {
     slice: number;
     loadFailed: boolean;
     // Placement of this window over the wall.
-    mode: { kind: 'tile'; c: number; r: number; scale: number } | { kind: 'preview'; top: number; scale: number };
+    mode:
+        | { kind: 'tile'; c: number; r: number; scale: number }
+        | { kind: 'preview'; top: number; scale: number };
 };
 
 export function WallOverlay({ data, scene, slice, loadFailed, mode }: Props) {
@@ -63,33 +78,55 @@ export function WallOverlay({ data, scene, slice, loadFailed, mode }: Props) {
             style={{ width: WALL_W, height: WALL_H, transform, transformOrigin: '0 0' }}
         >
             {/* ---------- Left: the story ---------- */}
-            <Block x={LEFT_X} y={380} w={LEFT_W}>
-                <p style={{ fontSize: 150, letterSpacing: '0.3em', color: accent }} className="uppercase">
+            <Block x={LEFT_X} y={300} w={LEFT_W}>
+                <p
+                    style={{
+                        fontSize: TYPE.primary,
+                        lineHeight: 1.1,
+                        letterSpacing: '0.2em',
+                        color: accent
+                    }}
+                    className="uppercase"
+                >
                     {story.kicker}
                 </p>
-                <p style={{ fontSize: 110, marginTop: 40 }} className="text-zinc-400">
+                <p style={{ fontSize: TYPE.secondary, marginTop: 40 }} className="text-zinc-400">
                     London's rush hour · a typical weekday
                 </p>
             </Block>
 
             {/* Clock: the primary text, filling most of one screen row. */}
             <Block x={LEFT_X - 40} y={TILE_H + 60} w={LEFT_W}>
-                <p style={{ fontSize: 900, lineHeight: '940px', fontWeight: 600 }}>{time}</p>
+                <p style={{ fontSize: TYPE.display, lineHeight: 1.05, fontWeight: 600 }}>{time}</p>
             </Block>
 
-            <Block x={LEFT_X} y={TILE_H * 2 + 140} w={LEFT_W}>
-                <p style={{ fontSize: 190, lineHeight: 1.15, fontWeight: 500 }}>{story.title}</p>
+            <Block x={LEFT_X} y={TILE_H * 2 + 100} w={LEFT_W}>
+                <p style={{ fontSize: TYPE.primary, lineHeight: 1.12, fontWeight: 500 }}>
+                    {story.title}
+                </p>
             </Block>
 
-            <Block x={LEFT_X} y={TILE_H * 3 + 120} w={LEFT_W}>
+            <Block x={LEFT_X} y={TILE_H * 3 + 100} w={LEFT_W}>
                 {loadFailed ? (
-                    <p style={{ fontSize: 140 }} className="text-red-300">
+                    <p style={{ fontSize: TYPE.secondary }} className="text-red-300">
                         rush.json not found — run scripts/build_data.py
                     </p>
                 ) : (
                     <>
-                        <p style={{ fontSize: 160, color: accent, fontWeight: 600 }}>{story.stat}</p>
-                        <p style={{ fontSize: 105, marginTop: 50, lineHeight: 1.3 }} className="text-zinc-400">
+                        <p
+                            style={{
+                                fontSize: TYPE.primary,
+                                lineHeight: 1.1,
+                                color: accent,
+                                fontWeight: 600
+                            }}
+                        >
+                            {story.stat}
+                        </p>
+                        <p
+                            style={{ fontSize: TYPE.secondary, marginTop: 40, lineHeight: 1.25 }}
+                            className="text-zinc-400"
+                        >
                             {story.note}
                         </p>
                     </>
@@ -100,47 +137,82 @@ export function WallOverlay({ data, scene, slice, loadFailed, mode }: Props) {
             {ranking ? (
                 <>
                     <Block x={RIGHT_X} y={300} w={RIGHT_W}>
-                        <p style={{ fontSize: 190, fontWeight: 600 }}>{ranking.heading}</p>
-                        <p style={{ fontSize: 110, marginTop: 50 }} className="text-zinc-400">
+                        <p style={{ fontSize: TYPE.primary, lineHeight: 1.1, fontWeight: 600 }}>
+                            {ranking.heading}
+                        </p>
+                        <p
+                            style={{ fontSize: TYPE.secondary, marginTop: 50 }}
+                            className="text-zinc-400"
+                        >
                             {ranking.subheading} · {time}–{endLabel(data, slice)}
                         </p>
                     </Block>
                     {ranking.items.map((item, i) => {
-                        const row = 1 + Math.floor(i / 3);
-                        const y = row * TILE_H + (i % 3) * ITEM_H + 40;
+                        const row = 1 + Math.floor(i / RANK_PER_ROW);
+                        const y = row * TILE_H + (i % RANK_PER_ROW) * ITEM_H + 50;
                         return (
                             <div
                                 key={item.key}
                                 className="absolute flex items-start"
-                                style={{ left: RIGHT_X, top: y, width: RIGHT_W, height: ITEM_H - 60 }}
+                                style={{
+                                    left: RIGHT_X,
+                                    top: y,
+                                    width: RIGHT_W,
+                                    height: ITEM_H - 60
+                                }}
                             >
-                                <span style={{ fontSize: 150, width: 330, color: accent, fontWeight: 600 }}>
+                                <span
+                                    style={{
+                                        fontSize: TYPE.primary,
+                                        lineHeight: 1.1,
+                                        width: 420,
+                                        color: accent,
+                                        fontWeight: 600
+                                    }}
+                                >
                                     {i + 1}
                                 </span>
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-baseline justify-between gap-[120px]">
                                         <span
                                             className="truncate"
-                                            style={{ fontSize: 140, fontWeight: 500 }}
+                                            style={{
+                                                fontSize: TYPE.primary,
+                                                lineHeight: 1.1,
+                                                fontWeight: 500
+                                            }}
                                         >
                                             {item.name}
                                         </span>
-                                        <span style={{ fontSize: 140, fontWeight: 600, color: accent }}>
+                                        <span
+                                            style={{
+                                                fontSize: TYPE.primary,
+                                                lineHeight: 1.1,
+                                                fontWeight: 600,
+                                                color: accent
+                                            }}
+                                        >
                                             {item.value}
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-[60px]" style={{ marginTop: 24 }}>
+                                    <div
+                                        className="flex items-center gap-[60px]"
+                                        style={{ marginTop: 30 }}
+                                    >
                                         {/* Bar length = share of the #1 item, for at-a-glance comparison. */}
                                         <div
                                             style={{
-                                                height: 28,
+                                                height: 36,
                                                 width: `${Math.max(2, item.share * 45)}%`,
                                                 background: accent,
                                                 opacity: 0.55,
-                                                borderRadius: 14
+                                                borderRadius: 18
                                             }}
                                         />
-                                        <span style={{ fontSize: 95 }} className="truncate text-zinc-400">
+                                        <span
+                                            style={{ fontSize: TYPE.secondary }}
+                                            className="truncate text-zinc-400"
+                                        >
                                             {item.detail}
                                         </span>
                                     </div>
@@ -152,7 +224,10 @@ export function WallOverlay({ data, scene, slice, loadFailed, mode }: Props) {
             ) : null}
 
             {/* Attribution once, bottom-left under the story (the ranking fills the right). */}
-            <p className="absolute text-zinc-500" style={{ left: LEFT_X, bottom: 140, fontSize: 70 }}>
+            <p
+                className="absolute text-zinc-500"
+                style={{ left: LEFT_X, bottom: 100, fontSize: TYPE.caption }}
+            >
                 Data: TfL NUMBAT 2025 (typical Tue–Thu) · TfL walking times between stations · Map ©
                 CARTO, © OpenStreetMap contributors
             </p>
@@ -160,7 +235,17 @@ export function WallOverlay({ data, scene, slice, loadFailed, mode }: Props) {
     );
 }
 
-function Block({ x, y, w, children }: { x: number; y: number; w: number; children: React.ReactNode }) {
+function Block({
+    x,
+    y,
+    w,
+    children
+}: {
+    x: number;
+    y: number;
+    w: number;
+    children: React.ReactNode;
+}) {
     return (
         <div className="absolute" style={{ left: x, top: y, width: w }}>
             {children}
@@ -202,7 +287,9 @@ function buildStory(data: RushData | null, scene: RushScene, slice: number) {
 function buildRanking(data: RushData, scene: RushScene, slice: number) {
     let items: RankItem[];
     if (scene === 'heartbeat') {
-        const top = [...data.stations].sort((a, b) => b.flow[slice] - a.flow[slice]).slice(0, RANK_COUNT);
+        const top = [...data.stations]
+            .sort((a, b) => b.flow[slice] - a.flow[slice])
+            .slice(0, RANK_COUNT);
         const max = top[0]?.flow[slice] || 1;
         items = top.map((s) => ({
             key: s.id,
@@ -214,7 +301,9 @@ function buildRanking(data: RushData, scene: RushScene, slice: number) {
         return { heading: 'Busiest stations', subheading: 'people entering + leaving', items };
     }
     if (scene === 'crush') {
-        const top = [...data.links].sort((a, b) => b.load[slice] - a.load[slice]).slice(0, RANK_COUNT);
+        const top = [...data.links]
+            .sort((a, b) => b.load[slice] - a.load[slice])
+            .slice(0, RANK_COUNT);
         const max = top[0]?.load[slice] || 1;
         items = top.map((l) => ({
             key: l.id,

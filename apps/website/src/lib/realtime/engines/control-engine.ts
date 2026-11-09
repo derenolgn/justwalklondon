@@ -1,18 +1,14 @@
 import { throttle } from '@tanstack/pacer';
 
-import { loadArcSegmentsDataset } from '../arc-segments';
-import { getCityMapView, isMapCity } from '../map-cities';
 import { controlStore } from '../stores/control-store';
 import type {
     BusMessage,
     ControlSliderMessage,
     ControlStoreState,
     HelloBusMessage,
-    MapCity,
     RushScene,
     ScreenMapViewMessage,
-    ScreenRushMessage,
-    ScreenSegmentSelectionMessage
+    ScreenRushMessage
 } from '../types';
 import { isRushScene, RUSH_SLICE_COUNT, sanitizeSlice } from '../types';
 import { BusEngine } from './bus-engine';
@@ -22,16 +18,12 @@ const SLIDER_MIN = 0;
 const SLIDER_MAX = 100;
 const MAP_ZOOM_MIN = 6;
 const MAP_ZOOM_MAX = 18;
-const DEFAULT_SHUFFLE_SELECTION_COUNT = 24;
 // Autoplay pace: one quarter hour per tick. Slow on purpose (viewer comfort on the wall).
 const PLAY_TICK_MS = 1500;
 // Autoplay covers the service day 05:00 -> 00:30 and loops (night slices are near-empty).
 const PLAY_LAST_SLICE = 78;
 
 export class ControlEngine extends BusEngine<ControlStoreState> {
-    // Cached once loaded to avoid repeated dataset fetches from the control route.
-    private segmentCount: number | null = null;
-
     // Slider moves can emit many events per second; throttle keeps interaction smooth locally
     // while reducing websocket chatter for all connected peers.
     private readonly broadcastSliderValueThrottled = throttle(
@@ -53,7 +45,6 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
         (zoom: number) => {
             this.send({
                 type: 'screen/map-view',
-                city: this.store.state.selectedCity,
                 view: { zoom },
                 peerId: this.getPeerId() ?? undefined
             });
@@ -149,51 +140,6 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
         this.broadcastMapZoomThrottled(this.zoomFromSlider(clampedValue));
     }
 
-    selectCity(city: MapCity) {
-        let hasChanged = false;
-        this.store.setState((prev) => {
-            if (prev.selectedCity === city) return prev;
-            hasChanged = true;
-            return {
-                ...prev,
-                selectedCity: city
-            };
-        });
-
-        if (!hasChanged) return;
-
-        // Broadcast full target view when city changes so all screens jump to the same anchor.
-        this.send({
-            type: 'screen/map-view',
-            city,
-            view: {
-                ...getCityMapView(city),
-                zoom: this.zoomFromSlider(this.store.state.sliderValue)
-            },
-            peerId: this.getPeerId() ?? undefined
-        });
-    }
-
-    async shuffleSegments() {
-        // Demo helper: choose a random subset for immediate visual feedback.
-        const segmentCount = await this.ensureSegmentCount();
-        if (segmentCount <= 0) return;
-
-        const targetCount = Math.min(DEFAULT_SHUFFLE_SELECTION_COUNT, segmentCount);
-        const indexes = this.pickRandomIndexes(segmentCount, targetCount);
-
-        this.store.setState((prev) => ({
-            ...prev,
-            selectedSegmentIndexes: indexes
-        }));
-
-        this.send({
-            type: 'screen/segment-selection',
-            indexes,
-            peerId: this.getPeerId() ?? undefined
-        });
-    }
-
     protected override onMessage(message: BusMessage) {
         if (message.type === 'control/slider') {
             const sliderMessage = message as ControlSliderMessage;
@@ -217,24 +163,13 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
         if (message.type === 'screen/map-view') {
             // Mirror incoming map events so all control clients display shared state.
             const mapViewMessage = message as ScreenMapViewMessage;
+            const zoom = mapViewMessage.view?.zoom;
+            if (typeof zoom !== 'number') return;
             this.store.setState((prev) => {
-                const nextCity = isMapCity(mapViewMessage.city)
-                    ? mapViewMessage.city
-                    : prev.selectedCity;
-                const nextSliderValue =
-                    typeof mapViewMessage.view?.zoom === 'number'
-                        ? this.sliderFromZoom(mapViewMessage.view.zoom)
-                        : prev.sliderValue;
-
-                if (prev.selectedCity === nextCity && prev.sliderValue === nextSliderValue) {
-                    return prev;
-                }
-
-                return {
-                    ...prev,
-                    selectedCity: nextCity,
-                    sliderValue: nextSliderValue
-                };
+                const nextSliderValue = this.sliderFromZoom(zoom);
+                return prev.sliderValue === nextSliderValue
+                    ? prev
+                    : { ...prev, sliderValue: nextSliderValue };
             });
             return;
         }
@@ -252,23 +187,6 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
             });
             return;
         }
-
-        if (message.type === 'screen/segment-selection') {
-            const segmentSelectionMessage = message as ScreenSegmentSelectionMessage;
-            if (!Array.isArray(segmentSelectionMessage.indexes)) return;
-            const indexes = segmentSelectionMessage.indexes
-                .filter((value): value is number => Number.isInteger(value) && value >= 0)
-                .slice()
-                .sort((a, b) => a - b);
-
-            this.store.setState((prev) => {
-                if (arraysEqual(prev.selectedSegmentIndexes, indexes)) return prev;
-                return {
-                    ...prev,
-                    selectedSegmentIndexes: indexes
-                };
-            });
-        }
     }
 
     protected override onHello(hello: HelloBusMessage) {
@@ -276,33 +194,11 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
         if (!state) return;
 
         // Rehydrate control UI from bus snapshot so newly opened tablets are immediately in sync.
-        this.store.setState((prev) => {
-            const nextCity = state.city;
-            const nextSliderValue = this.sliderFromZoom(state.zoom);
-            const nextSelectedIndexes = Array.isArray(state.selectedSegmentIndexes)
-                ? state.selectedSegmentIndexes
-                      .filter((value): value is number => Number.isInteger(value) && value >= 0)
-                      .slice()
-                      .sort((a, b) => a - b)
-                : prev.selectedSegmentIndexes;
-            if (
-                prev.selectedCity === nextCity &&
-                prev.sliderValue === nextSliderValue &&
-                arraysEqual(prev.selectedSegmentIndexes, nextSelectedIndexes)
-            ) {
-                return prev;
-            }
-            return {
-                ...prev,
-                selectedCity: nextCity,
-                sliderValue: nextSliderValue,
-                selectedSegmentIndexes: nextSelectedIndexes
-            };
-        });
         const slice = sanitizeSlice(state.slice);
         const scene = isRushScene(state.scene) ? state.scene : null;
         this.store.setState((prev) => ({
             ...prev,
+            sliderValue: this.sliderFromZoom(state.zoom),
             slice: slice ?? prev.slice,
             scene: scene ?? prev.scene
         }));
@@ -324,38 +220,6 @@ export class ControlEngine extends BusEngine<ControlStoreState> {
         const normalized = (clampedZoom - MAP_ZOOM_MIN) / (MAP_ZOOM_MAX - MAP_ZOOM_MIN);
         return this.clampSliderValue(normalized * (SLIDER_MAX - SLIDER_MIN) + SLIDER_MIN);
     }
-
-    private async ensureSegmentCount() {
-        if (this.segmentCount !== null) return this.segmentCount;
-        if (typeof window === 'undefined') return 0;
-
-        const payload = await loadArcSegmentsDataset();
-        if (!payload) {
-            // Soft-fail: control features should keep working even if optional data fetch fails.
-            return 0;
-        }
-
-        this.segmentCount = payload.length;
-        return this.segmentCount;
-    }
-
-    private pickRandomIndexes(maxExclusive: number, count: number) {
-        // Fisher-Yates shuffle for unbiased random subset.
-        const pool = Array.from({ length: maxExclusive }, (_, index) => index);
-        for (let i = pool.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [pool[i], pool[j]] = [pool[j], pool[i]];
-        }
-        return pool.slice(0, count).sort((a, b) => a - b);
-    }
 }
 
 export const controlEngine = ControlEngine.getInstance();
-
-function arraysEqual(a: number[], b: number[]) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) return false;
-    }
-    return true;
-}

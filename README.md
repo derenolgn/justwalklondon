@@ -16,9 +16,9 @@ An operator drives the wall from a tablet (`/control`), choosing a scene and scr
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | **1 · The heartbeat** | Every Tube and rail station pulses with the number of people entering and leaving it. The morning flood into Zone 1, the evening ebb. | NUMBAT station entries + exits        |
 | **2 · The crush**     | Every link between adjacent stations, coloured and thickened by how many passengers are on the trains.                                | NUMBAT link loads                     |
-| **3 · Just walk**     | The 8 busiest hops right now that TfL says take **10 minutes or less to walk**, highlighted and labelled.                             | NUMBAT link loads × TfL walking times |
+| **3 · Just walk**     | The 6 busiest hops right now that TfL says take **10 minutes or less to walk**, highlighted and labelled.                             | NUMBAT link loads × TfL walking times |
 
-A large clock and a live headline statistic sit on one corner of the wall, sized to be readable from about 10 m away.
+A large clock and a live headline statistic sit on one corner of the wall, sized to be readable from about 10 m away. All primary text (headings, stats, ranking rows) is at least 21% of one screen's height, meeting the DO guideline of 20%; supporting notes and map labels use a smaller secondary size, and the type scale lives in one constant (`TYPE` in `wall-overlay.tsx`).
 
 ## Data
 
@@ -66,7 +66,6 @@ Raw TfL files are not committed. To regenerate `rush.json`:
 1. Download into `data-raw/`:
     - `NBT25TWT_Outputs.xlsx` from crowding.data.tfl.gov.uk (NUMBAT 2025 folder)
     - `LU_DLR_LO_NR_Zones_1-3_-_approximate_walk_times.xlsx` from tfl.gov.uk/walking
-    - `Central_London_journeys_that_be_quicker_to_walk_TOP_10_FINAL_DATA.xlsx` from tfl.gov.uk/walking
 2. Get a free key at [api-portal.tfl.gov.uk](https://api-portal.tfl.gov.uk/) and put `TFL_APP_KEY=...` in `.env`.
 3. Run:
 

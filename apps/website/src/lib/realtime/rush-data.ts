@@ -9,8 +9,9 @@ export const MAX_ZONE = 3;
 
 // A hop is "walkable" if TfL's walking map puts it at this many minutes or fewer.
 export const WALKABLE_MAX_MINUTES = 10;
-// How many of the busiest walkable hops the escape scene labels at once.
-export const ESCAPE_HIGHLIGHT_COUNT = 9;
+// How many of the busiest walkable hops the escape scene highlights at once.
+// Matches the ranking panel (2 per screen row x 3 rows) so map and list show the same hops.
+export const ESCAPE_HIGHLIGHT_COUNT = 6;
 
 export type RushStation = {
     id: string;

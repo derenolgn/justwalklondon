@@ -5,7 +5,12 @@ import { createFileRoute, useLocation } from '@tanstack/react-router';
 import { Map, type MapRef } from '@vis.gl/react-maplibre';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { WallOverlay, WALL_COLS as WALL_COLS_DO, WALL_ROWS as WALL_ROWS_DO } from '../components/wall-overlay';
+import {
+    TYPE,
+    WallOverlay,
+    WALL_COLS as WALL_COLS_DO,
+    WALL_ROWS as WALL_ROWS_DO
+} from '../components/wall-overlay';
 import { screenEngine } from '../lib/realtime/engines/screen-engine';
 import {
     loadRushData,
@@ -166,13 +171,14 @@ function ScreenPage() {
 
     const labels = useMemo<Label[]>(() => {
         if (scene !== 'escape') return [];
-        return highlights.map(({ link }) => ({
+        // Rank number only: names and walk times sit in the ranking panel under the same number.
+        // Neighbouring hops (e.g. Borough and Southwark) are too close for longer wall-size labels.
+        return highlights.map(({ link }, i) => ({
             id: link.id,
             position: midpoint(link.source, link.target),
-            text: `${shortName(link.fromName)} → ${shortName(link.toName)} · ${link.walk} min walk`
+            text: String(i + 1)
         }));
     }, [scene, highlights]);
-
 
     // --- DeckGL path (top-level tab) ---------------------------------------------------------
     // Preview shrinks the whole 30720px-wide wall into this window: scale marks and text to match.
@@ -213,7 +219,7 @@ function ScreenPage() {
                 getText: (d) => d.text,
                 // Labels pile up when zoomed far out; hide them below city-scale zoom.
                 visible: labelsVisible,
-                getSize: 34,
+                getSize: TYPE.secondary,
                 sizeScale: markScale,
                 getColor: [230, 255, 235, 255],
                 outlineWidth: 6,
@@ -221,7 +227,8 @@ function ScreenPage() {
                 fontSettings: { sdf: true },
                 fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
                 fontWeight: 600,
-                getPixelOffset: [0, -28],
+                // Offset is in screen pixels, so shrink it with the preview like the text itself.
+                getPixelOffset: [0, -90 * markScale],
                 characterSet: 'auto'
             })
         ];
@@ -368,7 +375,12 @@ function ScreenPage() {
                               top: (windowHeight - SCREEN_HEIGHT * WALL_ROWS * previewScale) / 2,
                               scale: previewScale
                           }
-                        : { kind: 'tile', c: screenC, r: screenR, scale: windowWidth / SCREEN_WIDTH }
+                        : {
+                              kind: 'tile',
+                              c: screenC,
+                              r: screenR,
+                              scale: windowWidth / SCREEN_WIDTH
+                          }
                 }
             />
         </main>
@@ -429,10 +441,6 @@ function styleStation(
 
 function pairKey(link: RushLink) {
     return [link.from, link.to].sort().join('|');
-}
-
-function shortName(name: string) {
-    return name.replace(/\s+(LU|NR|DLR|LO|EL)$/, '');
 }
 
 function midpoint(a: [number, number], b: [number, number]): [number, number] {

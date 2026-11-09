@@ -32,22 +32,13 @@ export type ControlSliderMessage = BusMessage & {
     value: number;
 };
 
-export type ScreenSegmentSelectionMessage = BusMessage & {
-    type: 'screen/segment-selection';
-    indexes: number[];
-};
-
-export type MapCity = 'london' | 'paris' | 'berlin' | 'madrid' | 'rome' | 'amsterdam';
-
-// Story scenes for "London's Rush Hour: Quicker to Walk".
+// Story scenes for "Just Walk, London".
 // heartbeat = station entries/exits pulse; crush = train loads between stations;
 // escape = hops that are quicker (or nearly as quick) to walk.
 export type RushScene = 'heartbeat' | 'crush' | 'escape';
 
 export type BusSharedState = {
-    city: MapCity;
     zoom: number;
-    selectedSegmentIndexes: number[];
     // Quarter-hour index into the NUMBAT service day (0 = 05:00-05:15 ... 95 = 04:45-05:00).
     slice: number;
     scene: RushScene;
@@ -70,14 +61,15 @@ export type ScreenMapViewState = {
 export type ScreenMapViewMessage = BusMessage & {
     type: 'screen/map-view';
     view: Partial<ScreenMapViewState>;
-    city?: MapCity;
 };
 
-export type ArcSegment = {
-    id: string;
-    start: [number, number];
-    end: [number, number];
-    weight: number;
+// Home camera: centred on Zones 1-2 so the walkable central hops fill the wall.
+export const LONDON_VIEW: ScreenMapViewState = {
+    longitude: -0.115,
+    latitude: 51.51,
+    zoom: 13,
+    bearing: 0,
+    pitch: 0
 };
 
 export type EngineRole = 'screen' | 'control';
@@ -107,8 +99,6 @@ export const createInitialEngineStoreState = (role: EngineRole): EngineStoreStat
 export type ControlStoreState = EngineStoreState & {
     sliderValue: number;
     isSliderInteracting: boolean;
-    selectedCity: MapCity;
-    selectedSegmentIndexes: number[];
     slice: number;
     scene: RushScene;
     isPlaying: boolean;
@@ -116,9 +106,6 @@ export type ControlStoreState = EngineStoreState & {
 
 export type ScreenStoreState = EngineStoreState & {
     mapView: ScreenMapViewState;
-    arcSegments: ArcSegment[];
-    selectedSegmentIndexes: number[];
-    isArcSegmentsLoading: boolean;
     slice: number;
     scene: RushScene;
 };
@@ -128,8 +115,6 @@ export const createInitialControlStoreState = (): ControlStoreState => ({
     // 58 maps to zoom ~13: Zones 1-3 fill the wall's height (4 screens).
     sliderValue: 58,
     isSliderInteracting: false,
-    selectedCity: 'london',
-    selectedSegmentIndexes: [],
     slice: DEFAULT_RUSH_SLICE,
     scene: 'heartbeat',
     isPlaying: false
@@ -137,16 +122,7 @@ export const createInitialControlStoreState = (): ControlStoreState => ({
 
 export const createInitialScreenStoreState = (): ScreenStoreState => ({
     ...createInitialEngineStoreState('screen'),
-    mapView: {
-        longitude: -0.115,
-        latitude: 51.51,
-        zoom: 13,
-        bearing: 0,
-        pitch: 0
-    },
-    arcSegments: [],
-    selectedSegmentIndexes: [],
-    isArcSegmentsLoading: false,
+    mapView: { ...LONDON_VIEW },
     slice: DEFAULT_RUSH_SLICE,
     scene: 'heartbeat'
 });

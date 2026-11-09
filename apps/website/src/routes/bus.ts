@@ -5,19 +5,15 @@ import type {
     BusMessage,
     BusSharedState,
     ScreenMapViewMessage,
-    ScreenRushMessage,
-    ScreenSegmentSelectionMessage
+    ScreenRushMessage
 } from '../lib/realtime';
-import { isMapCity } from '../lib/realtime/map-cities';
 import { DEFAULT_RUSH_SLICE, isRushScene, sanitizeSlice } from '../lib/realtime/types';
 
 // In-memory bus state for this server process.
 // New clients receive this snapshot in the `hello` handshake so they can
 // join late without waiting for another control interaction.
 const busSharedState: BusSharedState = {
-    city: 'london',
     zoom: 13,
-    selectedSegmentIndexes: [],
     slice: DEFAULT_RUSH_SLICE,
     scene: 'heartbeat'
 };
@@ -82,26 +78,11 @@ function updateBusSharedState(payload: Partial<BusMessage>) {
 
     if (payload.type === 'screen/map-view') {
         const message = payload as Partial<ScreenMapViewMessage>;
-        // Preserve last known valid city/zoom for hello-state replay.
-        if (isMapCity(message.city)) {
-            busSharedState.city = message.city;
+        // Preserve last known valid zoom for hello-state replay.
+        const zoom = message.view?.zoom;
+        if (typeof zoom === 'number' && Number.isFinite(zoom)) {
+            busSharedState.zoom = zoom;
         }
-
-        if (typeof message.view?.zoom === 'number') {
-            busSharedState.zoom = message.view.zoom;
-        }
-        return;
-    }
-
-    if (payload.type === 'screen/segment-selection') {
-        const message = payload as Partial<ScreenSegmentSelectionMessage>;
-        if (!Array.isArray(message.indexes)) return;
-
-        // Keep indexes deterministic for easier equality checks in clients and debugging.
-        busSharedState.selectedSegmentIndexes = message.indexes
-            .filter((value): value is number => Number.isInteger(value) && value >= 0)
-            .slice()
-            .sort((a, b) => a - b);
     }
 }
 
